@@ -21,6 +21,8 @@ Get-Module -ListAvailable ActiveDirectory
 Get-Command -Module ActiveDirectory
 ```
 
+![Vérification du module ActiveDirectory](screenshots/01-module-verification.png)
+
 ### 2. Connexion et Audit
 
 Vérification de la connexion au contrôleur de domaine et récupération des infos de l'utilisateur courant.
@@ -32,6 +34,10 @@ Get-ADDomain
 # Note : Par défaut, AD n'affiche que 10 propriétés. "-Properties *" force l'affichage complet.
 Get-ADUser -Identity $env:USERNAME -Properties *
 ```
+
+![Informations du domaine](screenshots/02-domain-info.png)
+
+![Propriétés utilisateur courant](screenshots/03-current-user-properties.png)
 
 ---
 
@@ -60,6 +66,8 @@ New-ADUser -Name "Alice Martin" `
            -ChangePasswordAtLogon $true
 ```
 
+![Création de l'utilisateur Alice Martin](screenshots/04-create-user.png)
+
 ### 2.2 Recherche et Filtrage (Read)
 
 L'utilisation du paramètre `-Filter` permet de trier la base de données efficacement.
@@ -74,6 +82,8 @@ Get-ADUser -Filter "Surname -like 'M*'"
 Get-ADUser -Filter * | Select-Object Name, SamAccountName
 ```
 
+![Recherche d'utilisateurs avec filtres](screenshots/05-search-filter.png)
+
 ### 2.3 Modification (Update)
 
 Mise à jour des attributs d'un compte existant.
@@ -84,6 +94,8 @@ Set-ADUser -Identity "amartin" `
            -Title "Développeuse Senior" `
            -Description "Membre de l'équipe développement"
 ```
+
+![Modification des attributs utilisateur](screenshots/06-update-user.png)
 
 ### 2.4 Désactivation et Suppression (Delete)
 
@@ -98,6 +110,10 @@ Get-ADUser -Identity "bdubois" -Properties Enabled | Select-Object Name, Enabled
 # 3. Suppression définitive (avec demande de confirmation)
 Remove-ADUser -Identity "cbernard" -Confirm:$true
 ```
+
+![Désactivation d'un compte](screenshots/07-disable-account.png)
+
+![Suppression d'un utilisateur](screenshots/08-delete-user.png)
 
 ---
 
