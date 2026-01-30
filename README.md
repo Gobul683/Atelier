@@ -354,6 +354,164 @@ Outil de support pour gérer les oublis de mot de passe ou les comptes verrouill
 ![Script de réinitialisation de mot de passe](screenshots/22-password-reset.png)
 
 ---
+
+## 📊 Partie 7 & 8 : Reporting, Audit et Orchestration Finale
+
+Une fois l'infrastructure Active Directory en place et automatisée, il est impératif de pouvoir surveiller son état (Partie 7) et de centraliser l'administration via un outil unifié (Partie 8).
+
+---
+
+## 📑 Partie 7 : Rapports et Audits de Sécurité
+
+L'objectif est de transformer les données brutes de l'AD en informations lisibles pour la prise de décision (DSI, RH). Nous avons créé un dossier dédié `C:\Rapports` pour stocker les scripts et les résultats.
+
+### 7.1 Détection des Utilisateurs Inactifs (`Get-InactiveUsers.ps1`)
+
+**Le Besoin** : Identifier les "comptes fantômes" (utilisateurs partis ou oubliés) qui représentent une faille de sécurité majeure.
+
+**La Solution** : Un script qui calcule la différence entre la date du jour et la propriété `PasswordLastSet`.
+```powershell
+# Extrait de la logique
+$DateLimite = (Get-Date).AddDays(-90)
+$Users = Get-ADUser -Filter {Enabled -eq $true -and PasswordLastSet -lt $DateLimite}
+
+# Calcul du delta en jours
+$Jours = (New-TimeSpan -Start $User.PasswordLastSet -End (Get-Date)).Days
+```
+
+**Résultat** : Génère un fichier CSV listant les comptes n'ayant pas changé de mot de passe depuis plus de 90 jours.
+
+![Détection des utilisateurs inactifs](screenshots/23-inactive-users.png)
+
+### 7.2 Inventaire des Comptes Désactivés (`Get-DisabledUsers.ps1`)
+
+**Le Besoin** : Vérifier que les procédures de départ (Offboarding) sont bien appliquées.
+
+**La Solution** : Filtrer sur l'attribut `Enabled` et extraire la description (qui contient la date de départ).
+```powershell
+Get-ADUser -Filter "Enabled -eq '$false'" -Properties Description | Select-Object Name, Description
+```
+
+![Rapport des comptes désactivés](screenshots/24-disabled-users.png)
+
+### 7.3 & 7.4 Tableaux de Bord HTML (`Get-GroupReport.ps1` & `Get-ADHealthReport.ps1`)
+
+Plutôt que des fichiers textes austères, nous avons automatisé la création de pages Web (HTML) pour présenter l'état de santé du domaine.
+
+**Techniques utilisées :**
+
+- **HTML/CSS Injection** : Utilisation de "Here-Strings" (`@" ... "@`) pour intégrer du design directement dans le script PowerShell.
+
+**Indicateurs Clés (KPIs) :**
+- Nombre total d'utilisateurs et de groupes.
+- Top 10 des groupes les plus peuplés.
+- Liste rouge des utilisateurs dont le mot de passe n'expire jamais.
+- Détection des groupes vides (inutiles).
+
+![Rapport HTML - Vue d'ensemble](screenshots/25-html-report-overview.png)
+
+![Rapport HTML - Détails groupes](screenshots/26-html-report-groups.png)
+
+---
+
+## 🧰 Partie 8 : Le Gestionnaire Active Directory (`AD-Manager.ps1`)
+
+Pour finaliser le projet, nous avons assemblé toutes les briques développées (Création, Maintenance, Audit) dans un outil CLI (Command Line Interface) centralisé.
+
+### 8.1 Architecture de l'Outil
+
+Le script `AD-Manager.ps1` agit comme un orchestrateur. Il ne contient pas toute la logique métier, mais appelle les scripts spécialisés situés dans `C:\Scripts` et `C:\Rapports`.
+
+**Structure du Code :**
+
+- **Boucle Infinie** (`While($true)`) : Maintient le menu affiché tant que l'utilisateur ne choisit pas "Quitter".
+- **Menu Interactif** : Affichage propre avec des couleurs pour distinguer les catégories (Utilisateurs, Groupes, Audit).
+- **Appels Modulaires** : Utilisation de l'opérateur d'appel `&` ou `Invoke-Expression` pour lancer les scripts externes.
+- **Gestion d'Erreurs Globale** : Un bloc `Try/Catch` encadre l'exécution pour empêcher l'outil de planter en cas de problème.
+
+### 8.2 Le Code Source Complet
+
+Voici le script final utilisé pour piloter l'infrastructure :
+```powershell
+# --- CONFIGURATION ---
+$LogFile = "C:\Rapports\ad_manager.log"
+$Date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+# Fonction de Logging centralisée
+function Log-Activity ($Message, $Type="INFO") {
+    $Ligne = "[$Type] $Message"
+    Add-Content -Path $LogFile -Value "[$Date] $Ligne"
+    if ($Type -eq "ERREUR") { Write-Host $Ligne -ForegroundColor Red }
+    elseif ($Type -eq "SUCCES") { Write-Host $Ligne -ForegroundColor Green }
+    else { Write-Host $Ligne -ForegroundColor Cyan }
+}
+
+# --- BOUCLE PRINCIPALE ---
+while ($true) {
+    Clear-Host
+    Write-Host "=== GESTIONNAIRE ACTIVE DIRECTORY ===" -ForegroundColor Yellow
+    
+    # Menu (Extrait)
+    Write-Host "1. Créer un utilisateur (Assistant)"
+    Write-Host "2. Rechercher un utilisateur"
+    Write-Host "3. Désactiver un utilisateur"
+    Write-Host "10. Importer CSV"
+    Write-Host "14. Audit Complet HTML"
+    Write-Host "15. Reset Mot de Passe"
+    Write-Host "16. Quitter"
+    
+    $choix = Read-Host "Votre choix"
+
+    try {
+        switch ($choix) {
+            "1" { 
+                # Appel du script d'onboarding interactif
+                $Script = "C:\Scripts\New-Employee.ps1"
+                if (Test-Path $Script) { Invoke-Expression $Script }
+            }
+            "10" {
+                # Appel du script d'import de masse
+                $Script = "C:\Scripts\Import-ADUsersFromCSV.ps1"
+                if (Test-Path $Script) { & $Script }
+            }
+            "14" { 
+                # Génération du rapport HTML
+                $Script = "C:\Rapports\Get-ADHealthReport.ps1"
+                if (Test-Path $Script) { & $Script }
+            }
+            "15" {
+                # Reset de mot de passe avec paramètre
+                $u = Read-Host "Login cible"
+                $Script = "C:\Scripts\Reset-EmployeePW.ps1"
+                if (Test-Path $Script) { & $Script -Login $u }
+            }
+            "16" { Break } # Sortie du programme
+            Default { Write-Warning "Choix invalide" }
+        }
+    }
+    catch {
+        Log-Activity "Erreur critique : $_" "ERREUR"
+    }
+    Read-Host "Appuyez sur Entrée..."
+}
+```
+
+![Menu principal AD-Manager](screenshots/27-ad-manager-menu.png)
+
+![Exécution d'une action depuis AD-Manager](screenshots/28-ad-manager-action.png)
+
+### 8.3 Bilan Technique
+
+Grâce à cet outil, un administrateur peut gérer l'intégralité du cycle de vie des objets AD (Création → Gestion → Audit → Suppression) sans jamais avoir à retenir une commande PowerShell complexe. L'outil assure :
+
+- La **standardisation** des procédures.
+- La **traçabilité** (via les logs).
+- L'**efficacité opérationnelle**.
+
+![Logs du gestionnaire AD](screenshots/29-ad-manager-logs.png)
+
+---
+
 ## 📚 Ressources
 
 - [Documentation Microsoft : Module ActiveDirectory](https://docs.microsoft.com/powershell/module/activedirectory/)
