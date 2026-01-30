@@ -222,6 +222,84 @@ Comment compter les utilisateurs dans une structure complexe ?
 
 ---
 
+## 🚀 Partie 5 : Automatisation Avancée (Import de Masse & Logs)
+
+L'objectif final de ce module était de passer d'une administration manuelle à une automatisation industrielle. J'ai développé un script capable de lire un fichier CSV, de vérifier si les utilisateurs existent déjà, de les créer, et de les ajouter à plusieurs groupes de sécurité automatiquement.
+
+### 5.1 Structure des Données (CSV)
+
+J'ai enrichi le fichier source `nouveaux_employes.csv` pour inclure la gestion des groupes.
+
+- **Format** : Délimiteur virgule (`,`).
+- **Multi-groupes** : Utilisation du point-virgule (`;`) pour séparer les groupes dans une même cellule (ex: `GRP_Developpeurs;GRP_IT`).
+```csv
+Prenom,Nom,Login,Groupes,OU,...
+David,Petit,dpetit,GRP_Developpeurs;GRP_IT,"OU=Developpement..."
+Thomas,Test,ttest,GRP_Developpeurs,"OU=Developpement..."
+```
+
+![Structure du fichier CSV](screenshots/15-csv-structure.png)
+
+### 5.2 Logique du Script (Fonctionnalités Clés)
+
+Mon script `Import-ADUsers.ps1` intègre plusieurs concepts avancés de scripting :
+
+**1. Idempotence (Check-Before-Create)**
+- Avant de créer un compte, le script vérifie s'il existe déjà avec `Get-ADUser -ErrorAction SilentlyContinue`.
+- **Bénéfice** : On peut relancer le script 10 fois sans avoir d'erreurs rouges partout.
+
+**2. Système de Logging (Audit)**
+- Création d'une fonction `Log-Message` qui écrit simultanément dans la console (avec couleurs) et dans un fichier `import_log.txt`.
+- Permet de garder une trace horodatée de qui a été créé et quand.
+
+**3. Gestion Dynamique des Groupes**
+- Utilisation de la méthode `.Split(";")` pour transformer la chaîne "Grp1;Grp2" en un tableau.
+- Boucle imbriquée pour ajouter l'utilisateur à chaque groupe successivement.
+
+### 5.3 Le Code (Extrait)
+```powershell
+# Extrait de la logique de traitement
+foreach ($employe in $listesEmployes) {
+    # 1. Vérification existence
+    if (Get-ADUser -Filter "SamAccountName -eq '$($employe.Login)'") {
+        Log-Message "IGNORÉ : L'utilisateur $($employe.Login) existe déjà." "Yellow"
+    }
+    else {
+        # 2. Création
+        New-ADUser -Name "$($employe.Prenom) $($employe.Nom)" ...
+        
+        # 3. Ajout aux groupes (Split)
+        $groupes = $employe.Groupes -split ";"
+        foreach ($grp in $groupes) {
+            Add-ADGroupMember -Identity $grp -Members $employe.Login
+        }
+    }
+}
+```
+
+![Exécution du script d'import masse](screenshots/16-script-execution.png)
+
+![Logs générés par le script](screenshots/17-import-logs.png)
+
+---
+
+## 🛠️ Challenges Techniques et Résolutions
+
+Durant le développement de l'automatisation, j'ai surmonté plusieurs obstacles :
+
+**Syntaxe de l'UPN (UserPrincipalName)**
+- **Problème** : PowerShell interprétait le `@` de l'adresse email comme un opérateur de "splatting".
+- **Solution** : Encapsulation de la variable dans des guillemets doubles : `"$($employe.Login)@techsecure.local"`.
+
+**Gestion des Variables Vides**
+- Lors d'une modification du script, j'avais supprimé par erreur la ligne `Import-Csv`. Le script s'exécutait sans erreur mais ne faisait rien. J'ai appris l'importance de vérifier l'initialisation des variables (`if (-not $listesEmployes)...`).
+
+**Visualisation dans l'AD**
+- Les utilisateurs créés n'apparaissaient pas immédiatement. J'ai compris qu'il fallait actualiser (`F5`) les Unités Organisationnelles (OU) spécifiques et non juste la racine du domaine pour voir les nouveaux objets.
+
+![Résultats finaux dans Active Directory](screenshots/18-ad-final-results.png)
+
+---
 ## 📚 Ressources
 
 - [Documentation Microsoft : Module ActiveDirectory](https://docs.microsoft.com/powershell/module/activedirectory/)
