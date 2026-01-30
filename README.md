@@ -300,6 +300,60 @@ Durant le développement de l'automatisation, j'ai surmonté plusieurs obstacles
 ![Résultats finaux dans Active Directory](screenshots/18-ad-final-results.png)
 
 ---
+
+## 🛠️ Partie 6 : La "Toolbox" de l'Administrateur (Scripts Interactifs)
+
+Après avoir automatisé la création de masse (CSV), j'ai développé une suite d'outils interactifs pour la gestion quotidienne des utilisateurs (Helpdesk). L'objectif : permettre à un opérateur non-technique d'effectuer des tâches complexes via des menus simples.
+
+### 6.1 Onboarding Interactif (`New-Employee.ps1`)
+
+Un assistant de création qui standardise les comptes sans risque d'erreur humaine.
+
+**Logique "Intelligente"** : Le script ne demande que le Prénom et le Nom. Il calcule le reste :
+- **Login** : Généré automatiquement (1ère lettre du prénom + Nom).
+- **Email** : Format `prenom.nom@techsecure.local`.
+- **Mot de passe** : Génération aléatoire sécurisée (`Get-Random`).
+
+**Menu de sélection** : Utilisation de l'instruction `Switch` pour placer l'utilisateur dans la bonne OU (Informatique, RH...) en tapant simplement 1, 2 ou 3.
+```powershell
+# Exemple de logique de calcul du login
+$login = $prenom.Substring(0,1).ToLower() + $nom.ToLower()
+```
+
+![Script d'onboarding interactif](screenshots/19-onboarding-interactive.png)
+
+### 6.2 Offboarding & Sécurité (`Remove-Employee.ps1`)
+
+La procédure de départ est critique. Un compte oublié est une faille de sécurité. Ce script exécute une "mise au placard" complète et auditée.
+
+**Les 5 étapes de sécurisation exécutées par le script :**
+
+1. **Désactivation** : Bloque l'accès immédiat (`Disable-ADAccount`).
+2. **Brouillage du mot de passe** : Réinitialise le mot de passe avec une chaîne aléatoire complexe pour empêcher toute réactivation furtive.
+3. **Nettoyage des accès** : Retire l'utilisateur de tous ses groupes de sécurité.
+   - **Défi technique** : Active Directory interdit de retirer un utilisateur du groupe primaire "Utilisateurs du domaine". J'ai dû utiliser un filtre `Where-Object` pour exclure ce groupe de la boucle de suppression.
+4. **Archivage** : Déplace le compte vers une OU "Comptes Désactivés".
+5. **Audit (Logging)** : Chaque action est horodatée et écrite dans un fichier `offboarding.log`.
+```powershell
+# Exclusion du groupe primaire pour éviter l'erreur AD
+$Groupes = Get-ADPrincipalGroupMembership -Identity $Login | Where-Object { $_.Name -ne "Utilisateurs du domaine" }
+Remove-ADPrincipalGroupMembership -Identity $Login -MemberOf $Groupes
+```
+
+![Processus d'offboarding sécurisé](screenshots/20-offboarding-process.png)
+
+![Logs d'offboarding](screenshots/21-offboarding-logs.png)
+
+### 6.3 Maintenance des Mots de Passe (`Reset-EmployeePassword.ps1`)
+
+Outil de support pour gérer les oublis de mot de passe ou les comptes verrouillés.
+
+- **Sécurité par défaut** : Le script force l'option `-ChangePasswordAtLogon $true`. L'utilisateur reçoit un mot de passe temporaire mais est obligé de le changer dès sa première connexion.
+- **Déverrouillage** : Inclut `Unlock-ADAccount` pour gérer les cas où l'utilisateur a bloqué son compte après trop de tentatives échouées.
+
+![Script de réinitialisation de mot de passe](screenshots/22-password-reset.png)
+
+---
 ## 📚 Ressources
 
 - [Documentation Microsoft : Module ActiveDirectory](https://docs.microsoft.com/powershell/module/activedirectory/)
