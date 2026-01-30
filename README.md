@@ -117,13 +117,114 @@ Remove-ADUser -Identity "cbernard" -Confirm:$true
 
 ---
 
+## 👥 Partie 3 : Gestion des Groupes de Sécurité
+
+Dans un environnement professionnel, on ne gère pas les permissions utilisateur par utilisateur, mais par groupe.
+
+### 3.1 Création des Groupes
+
+Utilisation de `New-ADGroup` pour créer des conteneurs de sécurité.
+
+- **Scope Global** : Le groupe est visible dans tout le domaine.
+- **Category Security** : Sert à gérer les droits d'accès (fichiers, applis).
+```powershell
+# Création de plusieurs groupes d'un coup
+New-ADGroup -Name "GRP_Developpeurs" -GroupScope Global -GroupCategory Security -Description "Équipe Dev"
+New-ADGroup -Name "GRP_Admins_Systeme" -GroupScope Global -GroupCategory Security
+New-ADGroup -Name "GRP_IT" -GroupScope Global -GroupCategory Security
+```
+
+![Création des groupes de sécurité](screenshots/09-create-groups.png)
+
+### 3.2 Gestion des Membres et Pipelines
+
+Pour ajouter des membres, on utilise `Add-ADGroupMember`. J'ai appris à gérer l'ajout de masse.
+
+**Méthode 1 : Ajout direct**
+```powershell
+Add-ADGroupMember -Identity "GRP_Developpeurs" -Members "amartin", "bdubois"
+```
+
+**Méthode 2 : Ajout dynamique (Le défi du Pipeline)**
+
+L'objectif était de mettre tous les Développeurs dans le groupe IT.
+
+- **Problème rencontré** : Le pipe `|` simple échouait parfois à passer les objets.
+- **Solution** : Utiliser les parenthèses pour forcer l'exécution de la recherche en premier.
+```powershell
+# On cherche d'abord les membres, PUIS on les ajoute au groupe cible
+Add-ADGroupMember -Identity "GRP_IT" -Members (Get-ADGroupMember -Identity "GRP_Developpeurs")
+```
+
+![Ajout de membres aux groupes](screenshots/10-add-group-members.png)
+
+### 3.3 Groupes Imbriqués (Nested Groups)
+
+Création d'une hiérarchie : Le groupe "IT" est membre du groupe "Tous_Utilisateurs".
+```powershell
+# Ajout d'un groupe dans un autre
+Add-ADGroupMember -Identity "GRP_Tous_Utilisateurs" -Members "GRP_IT"
+
+# Vérification récursive (Indispensable pour voir les vrais utilisateurs au fond des groupes)
+Get-ADGroupMember -Identity "GRP_Tous_Utilisateurs" -Recursive | Select-Object Name
+```
+
+![Groupes imbriqués et vérification récursive](screenshots/11-nested-groups.png)
+
+---
+
+## 📂 Partie 4 : Organisation (OUs) et Structure
+
+Passage d'une liste plate à une structure hiérarchique organisée (Arbre LDAP).
+
+### 4.1 Architecture et Chemins LDAP
+
+Création de l'arborescence avec `New-ADOrganizationalUnit`.
+
+- **Challenge technique** : Comprendre le "Distinguished Name" (DN).
+- **Erreur corrigée** : Mon script utilisait `DC=fr` alors que mon domaine était `DC=local`. Correction via `(Get-ADDomain).DistinguishedName`.
+```powershell
+# Définition du chemin racine correct
+$rootPath = "DC=techsecure,DC=local"
+
+# Création de la structure
+New-ADOrganizationalUnit -Name "TechSecure" -Path $rootPath
+New-ADOrganizationalUnit -Name "Utilisateurs" -Path "OU=TechSecure,$rootPath"
+```
+
+![Création de la structure OU](screenshots/12-create-ou-structure.png)
+
+### 4.2 Déménagement des Objets
+
+Les utilisateurs créés par défaut se trouvent dans le conteneur "Users". Nous les avons déplacés vers leur nouvelle structure.
+```powershell
+# Définition de la destination (Variable pour éviter les erreurs de frappe)
+$targetDev = "OU=Developpement,OU=Informatique,OU=Utilisateurs,OU=TechSecure,DC=techsecure,DC=local"
+
+# Déplacement via Pipe
+Get-ADUser -Identity "amartin" | Move-ADObject -TargetPath $targetDev
+```
+
+![Déplacement des utilisateurs vers les OUs](screenshots/13-move-users.png)
+
+### 4.3 Audit et Statistiques (SearchScope)
+
+Comment compter les utilisateurs dans une structure complexe ?
+
+- **SearchScope 'OneLevel'** : Cherche uniquement dans le dossier courant (Résultat = 0 car les users sont dans les sous-dossiers).
+- **SearchScope 'Subtree'** : Cherche dans le dossier ET les sous-dossiers (Résultat correct).
+```powershell
+# Compter tous les utilisateurs de l'IT (y compris Développement et Infra)
+(Get-ADUser -Filter * -SearchBase $pathIT -SearchScope Subtree).Count
+```
+
+![Audit avec SearchScope](screenshots/14-searchscope-audit.png)
+
+---
+
 ## 📚 Ressources
 
 - [Documentation Microsoft : Module ActiveDirectory](https://docs.microsoft.com/powershell/module/activedirectory/)
 - [Get-ADUser cmdlet reference](https://docs.microsoft.com/powershell/module/activedirectory/get-aduser)
-
-## 🎯 Prochaines étapes
-
-- Automatisation de la création en masse (import CSV)
-- Gestion des groupes de sécurité
-- Scripts de reporting et d'audit
+- [New-ADGroup cmdlet reference](https://docs.microsoft.com/powershell/module/activedirectory/new-adgroup)
+- [New-ADOrganizationalUnit cmdlet reference](https://docs.microsoft.com/powershell/module/activedirectory/new-adorganizationalunit)
